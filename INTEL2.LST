@@ -1,0 +1,1469 @@
+Microsoft (R) Macro Assembler Version 6.11		    07/10/25 19:58:44
+intel2.asm						     Page 1 - 1
+
+
+					
+					
+					.model		small
+					.stack
+					
+ = 000D				CR		equ		0dh	;Primeiro byte encontrado no final de uma linha em arquivos de texto.
+ = 000A				LF		equ		0ah	;Segundo byte encontrado no final de uma linha em arquivos de texto.
+					
+ 0000					.data
+					
+					;Variáveis dos arquivos.
+ 0000 44 41 44 4F 53 2E		NameDados 		db	"DADOS.TXT", 0
+       54 58 54 00
+ 000A 0000			HandleDados		dw	0
+
+ 000C 45 58 50 2E 54 58		NameExp			db	"EXP.TXT", 0
+       54 00
+ 0014 0000			HandleExp		dw	0
+
+ 0016 52 45 53 55 4C 54		NameOut			db	"RESULT.TXT", 0
+       2E 54 58 54 00
+ 0021 0000			HandleOut		dw	0
+
+					;Strings das mensagens.
+ 0023 41 72 71 75 69 76		MsgSucesso		db	"Arquivo 'RESULT.TXT' gerado com sucesso.", CR, LF, 0
+       6F 20 27 52 45 53
+       55 4C 54 2E 54 58
+       54 27 20 67 65 72
+       61 64 6F 20 63 6F
+       6D 20 73 75 63 65
+       73 73 6F 2E 0D 0A
+       00
+ 004E 45 72 72 6F 20 6E		MsgErroCreate	db	"Erro na criação do arquivo.", CR, LF, 0
+       61 20 63 72 69 61
+       C3 A7 C3 A3 6F 20
+       64 6F 20 61 72 71
+       75 69 76 6F 2E 0D
+       0A 00
+ 006E 45 72 72 6F 20 6E		MsgErroOpen		db	"Erro na abertura do arquivo.", CR, LF, 0
+       61 20 61 62 65 72
+       74 75 72 61 20 64
+       6F 20 61 72 71 75
+       69 76 6F 2E 0D 0A
+       00
+ 008D 45 72 72 6F 20 6E		MsgErroRead		db	"Erro na leitura do arquivo.", CR, LF, 0
+       61 20 6C 65 69 74
+       75 72 61 20 64 6F
+       20 61 72 71 75 69
+       76 6F 2E 0D 0A 00
+ 00AB 45 72 72 6F 20 6E		MsgErroWrite	db	"Erro na escrita do arquivo.", CR, LF, 0
+       61 20 65 73 63 72
+       69 74 61 20 64 6F
+       20 61 72 71 75 69
+       76 6F 2E 0D 0A 00
+ 00C9 43 61 72 61 63 74		msgErroReadExp	db	"Caracter invalido em EXP.TXT.", CR, LF, 0
+       65 72 20 69 6E 76
+       61 6C 69 64 6F 20
+       65 6D 20 45 58 50
+       2E 54 58 54 2E 0D
+       0A 00
+ 00E9 4E 75 6D 65 72 6F		msgErroColuna	db	"Numero invalido de Colunas", CR, LF, 0
+       20 69 6E 76 61 6C
+       69 64 6F 20 64 65
+       20 43 6F 6C 75 6E
+       61 73 0D 0A 00
+ 0106 43 61 72 61 63 74		msgErroDados	db	"Caracter invalido em DADOS.TXT.", CR, LF, 0
+       65 72 20 69 6E 76
+       61 6C 69 64 6F 20
+       65 6D 20 44 41 44
+       4F 53 2E 54 58 54
+       2E 0D 0A 00
+ 0128 45 72 72 6F 20 6E		msgErroCalculo	db	"Erro no calculo dos resultados", CR, LF, 0
+       6F 20 63 61 6C 63
+       75 6C 6F 20 64 6F
+       73 20 72 65 73 75
+       6C 74 61 64 6F 73
+       0D 0A 00
+ 0149 4E 75 6D 65 72 6F		msgErroNColuna	db	"Numero de colunas nao corresponde", CR, LF, 0
+       20 64 65 20 63 6F
+       6C 75 6E 61 73 20
+       6E 61 6F 20 63 6F
+       72 72 65 73 70 6F
+       6E 64 65 0D 0A 00
+
+					;Vetores que armazenam os valores dos arquivos.
+ 016D  0014 [			vetorLinha		dw	20	DUP(?)
+        0000
+       ]
+ 0195  0064 [			vetorResultados	dw	100	DUP(?)
+        0000
+       ]
+ 025D  0064 [			vetorExpComAst	db	100	DUP(-1)
+        FF
+       ]
+ 02C1  0064 [			vetorOp1		dw	100	DUP(-1)
+        FFFF
+       ]
+ 0389  0064 [			vetorOp2		dw	100	DUP(-1)
+        FFFF
+       ]
+ 0451  0064 [			vetorTipoOp1	db	100	DUP(-1)	;0 = constante, 1 = coluna, 2 = resultado.
+        FF
+       ]
+ 04B5  0064 [			vetorTipoOp2	db	100	DUP(-1)
+        FF
+       ]
+ 0519  0064 [			vetorOperacao	db	100	DUP(-1)	;1 = +, 2 = -, 3 = *, 4 = /, 5 = %, 6 = &, 7 = |, 8 = ^.
+        FF
+       ]
+ 057D  0064 [			vetorIdExpFazer	db	100	DUP(0)	;Tem '1' na posição dos vetores que serão calculados.
+        00
+       ]
+ 05E1  0064 [			vetorListaExp	db	100	DUP(-1)	;Tem os 'ids' das expressões a fazer na linha.
+        FF
+       ]
+
+					;Variáveis que armazenam valores dos arquivos.
+ 0645 00			nColunasDados	db	0
+
+					;Variáveis de controle dos arquivos.
+ 0646 0000			FileHandle		dw 	0
+ 0648 00			FileBuffer		db	0
+ 0649 00			flagEOF			db	0
+ 064A 00			flagEOFDados	db 	0
+ 064B 00			bufferWriteByte1	db	0
+ 064C 00			bufferWriteByte2	db	0
+
+					;Flags de leitura de EXP.TXT.
+ 064D 00			flagExpTemAst	db	0
+ 064E 00			flagExpLendoOp	db	0
+
+					;Flags de leitura de DADOS.TXT
+ 064F 00			FlagDadoAtualNeg	db	0
+
+					;Variáveis do controle de leitura.
+ 0650 0000			IdExpAtual		dw	0
+ 0652 FF			OperExpAtual	db	-1
+ 0653 0000			cursorLista		dw	0
+ 0655 0000			cursorVetLinha	dw	0
+ 0657 FFFF			cursorExpComAst	dw	-1
+
+					;Variáveis auxiliares de leitura.
+ 0659 00			bufferTipoOp	db	0
+ 065A 00			ExpCalcAux1		db	0
+ 065B 0000			ExpCalcAux2		dw	0
+ 065D 00			ColCalcAux1		db	0
+ 065E 0000			ColCalcAux2		dw	0
+ 0660 00			DadosCalcAux1	db	0
+ 0661 0000			DadosCalcAux2	dw	0
+ 0663 00			linha1ResAux1	db	0
+ 0664 00			countNColunas	db	0
+
+					;Variáveis de controle de escrita
+ 0665 00			countExpAFazer	db	0
+ 0666 0000			valorASerEscrito	dw	0
+ 0668 00			flagWriteResultadoNeg	db	0
+ 0669  0006 [			asciiBuffer 	db 6 dup (0)
+        00
+       ]
+
+					;Variáveis auxiliares de cálculo.
+ 066F 00			countExpFeitas	db	0
+ 0670 FF			ExpSendoFeita	db	-1
+ 0671 00			cursorExpAtual	db	0
+
+ 0672 0000			ExpFazendoOp1	dw	0
+ 0674 00			ExpFazendoOp1Ti	db	0
+ 0675 0000			ExpFazendoOp2	dw	0
+ 0677 00			ExpFazendoOp2Ti	db	0
+ 0678 00			ExpFazendoOper	db	0
+ 0679 00			FlagWriteExpFazendo	db	0
+
+
+ 0000					.code
+					.startup
+					
+					;Criação do arquivo de resultado:
+					
+ 0017  8D 16 0016 R			lea dx, NameOut
+ 001B  E8 004A				call fcreate
+ 001E  A1 0646 R			mov ax, FileHandle	
+ 0021  A3 0021 R			mov HandleOut, ax	;Salvando handle do arquivo criado em "HandleOut".
+					
+					
+					;Abertura dos arquivos "DADOS.TXT" e "EXP.TXT".
+					
+ 0024  8D 16 0000 R			lea dx, NameDados
+ 0028  E8 0056				call fopen
+ 002B  A1 0646 R			mov ax, FileHandle
+ 002E  A3 000A R			mov HandleDados, ax
+					
+ 0031  8D 16 000C R			lea dx, NameExp
+ 0035  E8 0049				call fopen
+ 0038  A1 0646 R			mov ax, FileHandle
+ 003B  A3 0014 R			mov HandleExp, ax
+					
+					
+					;Main do programa.
+					
+ 003E  E8 00AE				call readExp	;Chama função que lê EXP.TXT
+					
+ 0041  E8 0524				call quantasExp	;Chama função que conta quantas expressões tem em EXP.TXT
+					
+ 0044  E8 032A				call readColuna	;Lê quantas colunas são informadas em DADOS.TXT
+					
+ 0047  E8 046F				call linha1Res	;Escreve a primeira linha de RESULT.TXT
+					
+					
+ 004A				callReadLinhaD:			;Loop principal, chama função que lê uma linha de DADOS.TXT,
+ 004A  E8 0383				call readLinhaD		;depois chama função que calcula e escreve os dados calculados.
+ 004D  80 3E 064A R 01			cmp flagEOFDados, 1	;Se função de leitura de DADOS.TXT detecta que chegou no fim do arquivo,
+ 0052  74 05				je ultimaLinha		;chama função de cálculo e escrita uma última vez antes de encerrar.
+					
+ 0054  E8 0530				call calcWriteL
+ 0057  EB F1				jmp callReadLinhaD
+
+ 0059				ultimaLinha:
+ 0059  E8 052B				call calcWriteL
+					
+ 005C  8D 1E 0023 R			lea bx, MsgSucesso
+ 0060  E8 007B				call printf_s
+					
+					.exit 0
+					
+					
+					
+					;Funções padrão para manipulação de arquivos:
+					
+ 0068					fcreate		proc	near	;Cria arquivo.
+ 0068  B4 3C					mov ah, 3ch				;Entra: dx = String com nome do arquivo.
+ 006A  B9 0000					mov cx, 0				;Retorna: CF = 0 se ok, ax handle.
+ 006D  CD 21					int 21h
+ 006F  73 0C					jnc retfcreate	;Se flag carry = 1, erro na criação.
+ 0071  8D 1E 004E R				lea bx, MsgErroCreate
+ 0075  E8 0066					call printf_s	;Chama printf_s com código de erro de criação e encerra programa.
+						.exit 1
+						
+ 007D					retfcreate:
+ 007D  A3 0646 R				mov FileHandle, ax	;Se criado com sucesso, move ax (filehandle) para variável FileHandle.
+ 0080  C3					ret
+ 0081					fcreate		endp
+					
+					
+					
+ 0081					fopen	proc	near	;Abre arquivo.
+ 0081  B0 00					mov		al,0		;Entra: dx = String com nome do arquivo.
+ 0083  B4 3D					mov		ah,3dh		;Retorna: CF = 0 se ok, ax = handle.
+ 0085  CD 21					int		21h
+ 0087  73 0C					jnc retfopen	;Se flag carry = 1, erro na abertura.
+ 0089  8D 1E 006E R				lea bx, MsgErroOpen
+ 008D  E8 004E					call printf_s	;Chama printf_s com código de erro de abertura e encerra programa.
+						.exit 1
+						
+ 0095					retfopen:	
+ 0095  A3 0646 R				mov		FileHandle, ax	;Se aberto com sucesso, move ax (filehandle) para variável FileHandle.
+ 0098  C3					ret
+ 0099					fopen	endp
+					
+					
+					
+ 0099					fclose	proc	near	;Fecha um arquivo.
+ 0099  B4 3E					mov		ah,3eh
+ 009B  CD 21					int		21h
+ 009D  C3					ret
+ 009E					fclose	endp
+					
+					
+					
+ 009E					fread	proc	near	;Lê um 1 byte de um arquivo e o armazena em "FileBuffer".
+ 009E  51					push	cx			;Entra: bx =  handle, cx = número de bytes a serem lidos, dx = end. buffer.
+ 009F  B4 3F					mov		ah,3fh		;Retorna: CF = 0 se ok, ax = número de bytes lidos, flagEOF = 1 se fim,
+ 00A1  B9 0001					mov		cx,1		;FileBuffer = byte lido.
+ 00A4  8D 16 0648 R				lea		dx,FileBuffer
+ 00A8  CD 21					int		21h
+ 00AA  73 0C					jnc fread1
+ 00AC  8D 1E 008D R				lea bx, MsgErroRead
+ 00B0  E8 002B					call printf_s
+						.exit 1
+						
+ 00B8					fread1:
+ 00B8  83 F8 00					cmp ax, 0
+ 00BB  74 02					je freadEOF	;Testa EOF.
+ 00BD  59					pop cx
+ 00BE  C3					ret
+						
+ 00BF					freadEOF:
+ 00BF  C6 06 0649 R 01				mov flagEOF, 1	;Altera flag EOF.
+						
+ 00C4  59					pop cx
+ 00C5  C3					ret
+ 00C6					fread	endp
+					
+					
+					
+ 00C6					fwrite		proc	near	;Escreve um byte em um arquivo.
+ 00C6  51					push cx					;Entra: bx = handle, cx = número de bytes a serem escritos,
+ 00C7  B4 40					mov ah,40h				;dx = endereço do dado a ser escrito (bufferEscrita).
+ 00C9  B9 0001					mov cx,1				;Retorna: CF = 0 se ok, ax = número de bytes escritos.
+ 00CC  CD 21					int 21h
+ 00CE  73 0C					jnc retfwrite
+ 00D0  8D 1E 00AB R				lea bx, MsgErroWrite
+ 00D4  E8 0007					call printf_s
+						.exit 1
+						
+ 00DC					retfwrite:
+ 00DC  59					pop cx
+ 00DD  C3					ret
+ 00DE					fwrite		endp
+					
+					
+					
+					; Funções para funcionamento do programa:
+					
+ 00DE					printf_s	proc	near	;Escreve uma string localizada em [bx].
+ 00DE  8A 17					mov		dl,[bx]
+ 00E0  80 FA 00					cmp		dl,0
+ 00E3  74 09					je		ps_1
+
+ 00E5  53					push	bx
+ 00E6  B4 02					mov		ah,2
+ 00E8  CD 21					int		21H
+ 00EA  5B					pop		bx
+
+ 00EB  43					inc		bx		
+ 00EC  EB F0					jmp		printf_s
+							
+ 00EE					ps_1:
+ 00EE  C3					ret
+ 00EF					printf_s	endp
+
+
+					
+ 00EF					readExp		proc	near	;Lê o arquivo EXP.TXT e armazena os dados nos vetores.
+					
+ 00EF				inicioLinhaReadExp:
+ 00EF  8B 1E 0014 R				mov bx, HandleExp	;Lê um byte de EXP.TXT.
+ 00F3  E8 FFA8					call fread
+ 00F6  A0 0648 R				mov al, FileBuffer
+ 00F9  80 3E 0649 R 01				cmp flagEOF, 1
+ 00FE  75 03 E9 0266				je fimFileExp
+						
+ 0103				linhaReadExpComp1:
+ 0103  3C 28					cmp al, '('
+ 0105  74 E8					je inicioLinhaReadExp	;Se for parênteses, lê próximo.
+ 0107  3C 29					cmp al, ')'
+ 0109  74 E4					je inicioLinhaReadExp
+ 010B  3C 2A					cmp al, '*'
+ 010D  74 1A					je linhaExpTemAst	;Se for *, expressão deve ser marcada.
+ 010F  3C 3D					cmp al, '='
+ 0111  74 34					je linhaReadExpPosIgual	;Se for '=', terminar leitura de identificador.
+ 0113  3C 30					cmp al, '0'
+ 0115  72 06					jb erroReadExp	;Se for numérico, deve ser calculada para decimal.
+ 0117  3C 39					cmp al, '9'
+ 0119  77 02					ja erroReadExp	;Se não for identificada, erro na formatação de EXP.TXT.
+ 011B  EB 13					jmp linhaExpCalcId
+						
+ 011D				erroReadExp:
+ 011D  8D 1E 00C9 R				lea bx, msgErroReadExp	;Chamada da função print com a mensagem de erro e encerramento.
+ 0121  E8 FFBA					call printf_s
+						.exit 1
+						
+ 0129				linhaExpTemAst:
+ 0129  C6 06 064D R 01			mov flagExpTemAst, 1	;Liga flag "flagExpTemAst".
+ 012E  EB BF				jmp inicioLinhaReadExp
+					
+ 0130				linhaExpCalcId:	;Calcula o valor dos bytes em ASCII lidos e converte para decimal.
+ 0130  83 E8 30				sub ax, '0'
+ 0133  A2 065A R			mov ExpCalcAux1, al
+ 0136  A1 065B R			mov ax, ExpCalcAux2
+ 0139  BB 000A				mov bx, 10
+ 013C  F7 E3				mul bx
+ 013E  12 06 065A R			adc al, ExpCalcAux1
+ 0142  A3 065B R			mov ExpCalcAux2, ax	;ExpCalcAux2 terá o decimal calculado no final.
+ 0145  EB A8				jmp inicioLinhaReadExp
+					
+					
+					
+ 0147				linhaReadExpPosIgual:
+ 0147  A1 065B R			mov ax, ExpCalcAux2	;Move o valor do identificador calculado para variável "IdExpAtual".
+ 014A  A3 0650 R			mov IdExpAtual, ax
+ 014D  8D 36 057D R			lea si, vetorIdExpFazer
+ 0151  03 36 0650 R			add si, IdExpAtual
+ 0155  C7 04 0001			mov [si], 1
+ 0159  8D 36 05E1 R			lea si, vetorListaExp
+ 015D  03 36 0653 R			add si, cursorLista
+ 0161  89 04				mov [si], ax
+ 0163  FF 06 0653 R			inc cursorLista
+ 0167  8D 36 025D R			lea si, vetorExpComAst
+ 016B  03 36 0650 R			add si, IdExpAtual
+ 016F  A0 064D R			mov al, flagExpTemAst
+ 0172  88 04				mov [si], al
+ 0174  C6 06 064D R 00			mov flagExpTemAst, 0
+ 0179  C6 06 065A R 00			mov ExpCalcAux1, 0	;Zera variáveis auxiliares do cálculo de identificador.
+ 017E  C7 06 065B R 0000		mov ExpCalcAux2, 0
+					
+					
+
+				;Início da leitura do arquivo EXP.TXT após o sinal de '='.	
+					
+ 0184				inicioReadExpPosIgual:
+ 0184  8B 1E 0014 R			mov bx, HandleExp	;Lê um byte de EXP.TXT.
+ 0188  E8 FF13				call fread
+ 018B  A0 0648 R			mov al, FileBuffer
+ 018E  80 3E 0649 R 01			cmp flagEOF, 1
+ 0193  75 03 E9 01D1			je fimFileExp
+					
+ 0198				linhaReadExpPosIgualComp1:	;Comparação do byte lido com caracteres esperados.
+ 0198  3C 5B				cmp al, '['
+ 019A  74 66				je	ReadExpPosIgualFlagColuna
+ 019C  3C 28				cmp al, '('
+ 019E  75 03 E9 0086			je ReadExpPosIgualFlagResultado
+ 01A3  3C 2B				cmp al, '+'
+ 01A5  75 03 E9 00A6			je ReadExpPosIgualOperadorAdd
+ 01AA  3C 2D				cmp al, '-'
+ 01AC  75 03 E9 00AD			je ReadExpPosIgualOperadorSub
+ 01B1  3C 2A				cmp al, '*'
+ 01B3  75 03 E9 00B4			je ReadExpPosIgualOperadorMult
+ 01B8  3C 2F				cmp al, '/'
+ 01BA  75 03 E9 00BB			je ReadExpPosIgualOperadorDiv
+ 01BF  3C 25				cmp al, '%'
+ 01C1  75 03 E9 00C2			je ReadExpPosIgualOperadorResto
+ 01C6  3C 26				cmp al, '&'
+ 01C8  75 03 E9 00C9			je ReadExpPosIgualOperadorAND
+ 01CD  3C 7C				cmp al, '|'
+ 01CF  75 03 E9 00D0			je ReadExpPosIgualOperadorOR
+ 01D4  3C 5E				cmp al, '^'
+ 01D6  75 03 E9 00D7			je ReadExpPosIgualOperadorXOR
+ 01DB  3C 5D				cmp al, ']'
+ 01DD  74 A5				je inicioReadExpPosIgual
+ 01DF  3C 29				cmp al, ')'
+ 01E1  74 A1				je inicioReadExpPosIgual
+ 01E3  3C 0D				cmp al, CR
+ 01E5  75 03 E9 00ED			je salvaOpNoVetor
+ 01EA  3C 0A				cmp al, LF
+ 01EC  75 03 E9 016A			je fimLinhaExp
+ 01F1  3C 30				cmp al, '0'
+ 01F3  73 03 E9 FF25			jb erroReadExp
+ 01F8  3C 39				cmp al, '9'
+ 01FA  76 03 E9 FF1E			ja erroReadExp		;Chegando ao final da comparação, se caracter não for reconhecido, erro e encerramento.
+ 01FF  E9 00BE				jmp linhaExpCalcOp
+					
+					
+					
+ 0202				ReadExpPosIgualFlagColuna:	;Se ler '[', salva no vetorTipoOp1 (ou 2) que o op1 (ou 2) é coluna.
+ 0202  80 3E 064E R 00			cmp flagExpLendoOp, 0
+ 0207  74 02				je ReadExpPosIgualFlagColunaOp1
+ 0209  EB 0F				jmp ReadExpPosIgualFlagColunaOp2
+
+ 020B				ReadExpPosIgualFlagColunaOp1:
+ 020B  8D 36 0451 R			lea si, vetorTipoOp1
+ 020F  03 36 0650 R			add si, IdExpAtual
+ 0213  B0 01				mov al, 1
+ 0215  88 04				mov [si], al
+ 0217  E9 FF6A				jmp inicioReadExpPosIgual
+
+ 021A				ReadExpPosIgualFlagColunaOp2:
+ 021A  8D 36 04B5 R			lea si, vetorTipoOp2
+ 021E  03 36 0650 R			add si, IdExpAtual
+ 0222  B0 01				mov al, 1
+ 0224  88 04				mov [si], al
+ 0226  E9 FF5B				jmp inicioReadExpPosIgual
+					
+					
+ 0229				ReadExpPosIgualFlagResultado:	;Se ler '(', salva no vetorTipoOp1 (ou 2) que o op1 (ou 2) é resultado.
+ 0229  80 3E 064E R 00			cmp flagExpLendoOp, 0
+ 022E  74 02				je ReadExpPosIgualFlagResultadoOp1
+ 0230  EB 0F				jmp ReadExpPosIgualFlagResultadoOp2
+
+ 0232				ReadExpPosIgualFlagResultadoOp1:
+ 0232  8D 36 0451 R			lea si, vetorTipoOp1
+ 0236  03 36 0650 R			add si, IdExpAtual
+ 023A  B0 02				mov al, 2
+ 023C  88 04				mov [si], al
+ 023E  E9 FF43				jmp inicioReadExpPosIgual
+
+ 0241				ReadExpPosIgualFlagResultadoOp2:
+ 0241  8D 36 04B5 R			lea si, vetorTipoOp2
+ 0245  03 36 0650 R			add si, IdExpAtual
+ 0249  B0 02				mov al, 2
+ 024B  88 04				mov [si], al
+ 024D  E9 FF34				jmp inicioReadExpPosIgual
+					
+					
+					
+ 0250				ReadExpPosIgualOperadorAdd:	;Identifica operação, e salva código da operação no "vetorOperacao".
+ 0250  8D 36 0519 R			lea si, vetorOperacao	;Depois pula para salvamento do operador calculado no "vetorOp1" (ou 2).
+ 0254  03 36 0650 R			add si, IdExpAtual
+ 0258  B0 01				mov al, 1
+ 025A  88 04				mov [si], al
+ 025C  EB 79				jmp salvaOpNoVetor
+
+ 025E				ReadExpPosIgualOperadorSub:
+ 025E  8D 36 0519 R			lea si, vetorOperacao
+ 0262  03 36 0650 R			add si, IdExpAtual
+ 0266  B0 02				mov al, 2
+ 0268  88 04				mov [si], al
+ 026A  EB 6B				jmp salvaOpNoVetor
+
+ 026C				ReadExpPosIgualOperadorMult:
+ 026C  8D 36 0519 R			lea si, vetorOperacao
+ 0270  03 36 0650 R			add si, IdExpAtual
+ 0274  B0 03				mov al, 3
+ 0276  88 04				mov [si], al
+ 0278  EB 5D				jmp salvaOpNoVetor
+
+ 027A				ReadExpPosIgualOperadorDiv:
+ 027A  8D 36 0519 R			lea si, vetorOperacao
+ 027E  03 36 0650 R			add si, IdExpAtual
+ 0282  B0 04				mov al, 4
+ 0284  88 04				mov [si], al
+ 0286  EB 4F				jmp salvaOpNoVetor
+
+ 0288				ReadExpPosIgualOperadorResto:
+ 0288  8D 36 0519 R			lea si, vetorOperacao
+ 028C  03 36 0650 R			add si, IdExpAtual
+ 0290  B0 05				mov al, 5
+ 0292  88 04				mov [si], al
+ 0294  EB 41				jmp salvaOpNoVetor
+
+ 0296				ReadExpPosIgualOperadorAND:
+ 0296  8D 36 0519 R			lea si, vetorOperacao
+ 029A  03 36 0650 R			add si, IdExpAtual
+ 029E  B0 06				mov al, 6
+ 02A0  88 04				mov [si], al
+ 02A2  EB 33				jmp salvaOpNoVetor
+
+ 02A4				ReadExpPosIgualOperadorOR:
+ 02A4  8D 36 0519 R			lea si, vetorOperacao
+ 02A8  03 36 0650 R			add si, IdExpAtual
+ 02AC  B0 07				mov al, 7
+ 02AE  88 04				mov [si], al
+ 02B0  EB 25				jmp salvaOpNoVetor
+
+ 02B2				ReadExpPosIgualOperadorXOR:
+ 02B2  8D 36 0519 R			lea si, vetorOperacao
+ 02B6  03 36 0650 R			add si, IdExpAtual
+ 02BA  B0 08				mov al, 8
+ 02BC  88 04				mov [si], al
+ 02BE  EB 17				jmp salvaOpNoVetor
+					
+					
+					
+ 02C0				linhaExpCalcOp:	;Calcula o valor dos bytes em ASCII lidos e converte para decimal.
+ 02C0  2C 30				sub al, '0'
+ 02C2  A2 065A R			mov ExpCalcAux1, al
+ 02C5  A1 065B R			mov ax, ExpCalcAux2
+ 02C8  BB 000A				mov bx, 10
+ 02CB  F7 E3				mul bx
+ 02CD  12 06 065A R			adc al, ExpCalcAux1
+ 02D1  A3 065B R			mov ExpCalcAux2, ax	;ExpCalcAux2 terá o decimal calculado no final.
+ 02D4  E9 FEAD				jmp inicioReadExpPosIgual
+					
+
+
+ 02D7				salvaOpNoVetor: ;Salva operador calculado em um dos vetores de operadores, na posição "IdExpAtual".
+ 02D7  80 3E 064E R 00			cmp flagExpLendoOp, 0	;Testa se é op 1 ou op 2.
+ 02DC  74 02				je salvaOp1NoVetor
+ 02DE  EB 3A				jmp salvaOp2NoVetor
+					
+ 02E0				salvaOp1NoVetor:		;Se for op 1, salva no vetor, zera variáveis auxiliares e muda flag para indicar
+ 02E0  A1 065B R			mov ax, ExpCalcAux2	;que próximo valor calculado será o op2.
+ 02E3  8D 36 02C1 R			lea si, vetorOp1
+ 02E7  8B 1E 0650 R			mov bx, IdExpAtual
+ 02EB  D1 E3				shl bx, 1
+ 02ED  03 F3				add si, bx
+ 02EF  89 04				mov [si], ax
+					
+ 02F1  8D 36 0451 R			lea si, vetorTipoOp1
+ 02F5  03 36 0650 R			add si, IdExpAtual
+ 02F9  8A 04				mov al, [si]
+ 02FB  3C 01				cmp al, 1
+ 02FD  74 08				je salvaOp1NoVetor2
+ 02FF  3C 02				cmp al, 2
+ 0301  74 04				je salvaOp1NoVetor2
+ 0303  B0 00				mov al, 0
+ 0305  88 04				mov [si], al
+					
+ 0307				salvaOp1NoVetor2:
+ 0307  C6 06 065A R 00			mov ExpCalcAux1, 0
+ 030C  C7 06 065B R 0000		mov ExpCalcAux2, 0
+					
+ 0312  C6 06 064E R 01			mov flagExpLendoOp, 1
+					
+ 0317  E9 FE6A				jmp inicioReadExpPosIgual
+
+ 031A				salvaOp2NoVetor:		;Se for op 2, salva no vetor, zera variáveis auxiliares e muda flag para valor original.
+ 031A  A1 065B R			mov ax, ExpCalcAux2
+ 031D  8D 36 0389 R			lea si, vetorOp2
+ 0321  8B 1E 0650 R			mov bx, IdExpAtual
+ 0325  D1 E3				shl bx, 1
+ 0327  03 F3				add si, bx
+ 0329  89 04				mov [si], ax
+					
+ 032B  8D 36 04B5 R			lea si, vetorTipoOp2
+ 032F  03 36 0650 R			add si, IdExpAtual
+ 0333  8A 04				mov al, [si]
+ 0335  3C 01				cmp al, 1
+ 0337  74 08				je salvaOp2NoVetor2
+ 0339  3C 02				cmp al, 2
+ 033B  74 04				je salvaOp2NoVetor2
+ 033D  B0 00				mov al, 0
+ 033F  88 04				mov [si], al
+					
+ 0341				salvaOp2NoVetor2:
+ 0341  C6 06 065A R 00			mov ExpCalcAux1, 0	;Zera variáveis auxiliares e flags.
+ 0346  C7 06 065B R 0000		mov ExpCalcAux2, 0
+					
+ 034C  C6 06 064E R 00			mov flagExpLendoOp, 0
+					
+ 0351  80 3E 0649 R 01			cmp flagEOF, 1	;Testa se EOF, se sim, pula para fora da função.
+ 0356  74 13				je fimFileExp1
+ 0358  E9 FE29				jmp inicioReadExpPosIgual
+
+ 035B				fimLinhaExp:
+ 035B  C6 06 065A R 00			mov ExpCalcAux1, 0	;Final da linha de EXP.TXT, zera variáveis auxiliares.
+ 0360  C7 06 065B R 0000		mov ExpCalcAux2, 0
+ 0366  E9 FD86				jmp inicioLinhaReadExp
+					
+ 0369				fimFileExp:				;Se chega no fim do arquivo, salva o último valor lido no vetor antes de sair.
+ 0369  EB AF				jmp salvaOp2NoVetor
+
+ 036B				fimFileExp1:
+ 036B  C6 06 0649 R 00			mov flagEOF, 0
+ 0370  C3				ret
+					
+ 0371					readExp		endp
+					
+					
+					
+ 0371					readColuna	proc	near	;Lê a informação do número de colunas de "DADOS.TXT".
+					
+ 0371					readColuna1:
+ 0371  8B 1E 000A R				mov bx, HandleDados	;Lê o primeiro byte de 'DADOS.TXT'.
+ 0375  E8 FD26					call fread
+ 0378  A0 0648 R				mov al, FileBuffer
+					
+ 037B  3C 0D					cmp al, CR
+ 037D  74 1E					je salvaColuna
+ 037F  3C 30					cmp al, '0'
+ 0381  72 40					jb erroReadColuna
+ 0383  3C 39					cmp al, '9'
+ 0385  77 3C					ja erroReadColuna
+						
+ 0387  2C 30					sub al, '0'
+ 0389  A2 065D R				mov ColCalcAux1, al
+ 038C  A1 065E R				mov ax, ColCalcAux2
+ 038F  BB 000A					mov bx, 10
+ 0392  F7 E3					mul bx
+ 0394  12 06 065D R				adc al, ColCalcAux1
+ 0398  A3 065E R				mov ColCalcAux2, ax	;ColCalcAux2 terá o decimal calculado no final.
+ 039B  EB D4					jmp readColuna1
+					
+ 039D					salvaColuna:
+ 039D  A1 065E R				mov ax, ColCalcAux2
+ 03A0  A2 0645 R				mov nColunasDados, al
+ 03A3  80 3E 0645 R 00				cmp nColunasDados, 0
+ 03A8  72 19					jb erroReadColuna
+ 03AA  80 3E 0645 R 14				cmp nColunasDados, 20
+ 03AF  77 12					ja erroReadColuna
+							
+ 03B1  B4 42					mov ah, 42h				;Move o ponteiro de leitura do arquivo em 1 byte, para
+ 03B3  B0 01					mov al, 1				;que a função de leitura das linhas comece na segunda linha.
+ 03B5  8B 1E 000A R				mov bx, HandleDados
+ 03B9  B9 0000					mov cx, 0
+ 03BC  BA 0001					mov dx, 1
+ 03BF  CD 21					int 21h
+ 03C1  EB 0C					jmp retReadColuna
+						
+ 03C3					erroReadColuna:
+ 03C3  8D 1E 00E9 R				lea bx, msgErroColuna	;Chamada da função print com a mensagem de erro e encerramento.
+ 03C7  E8 FD14					call printf_s
+						.exit 1
+						
+ 03CF					retReadColuna:
+ 03CF  C3					ret
+					
+ 03D0					readColuna	endp
+					
+					
+					
+ 03D0					readLinhaD	proc	near	;Lê uma linha do arquivo e armazena em 'vetorLinha'.
+					
+ 03D0  C7 06 0655 R 0000			mov cursorVetLinha, 0
+ 03D6  C6 06 0664 R 00				mov countNColunas, 0
+					
+ 03DB					readLinhaD1:	;Loop de leitura da DADOS.TXT.
+ 03DB  8B 1E 000A R				mov bx, HandleDados
+ 03DF  E8 FCBC					call fread
+ 03E2  A0 0648 R				mov al, FileBuffer
+ 03E5  80 3E 0649 R 01				cmp flagEOF, 1
+ 03EA  74 46					je salvaDadoNoVetorLinha
+						
+ 03EC					compLinhaDados1:	;Identificação do byte lido.
+ 03EC  3C 3B					cmp al, ';'
+ 03EE  74 42					je salvaDadoNoVetorLinha
+ 03F0  3C 0D					cmp al, CR
+ 03F2  74 3E					je salvaDadoNoVetorLinha
+ 03F4  3C 0A					cmp al, LF
+ 03F6  75 03 E9 00A2				je retReadLinhaD
+ 03FB  3C 2D					cmp al, '-'
+ 03FD  74 16					je ligarFlagDadoAtualNeg
+ 03FF  3C 30					cmp al, '0'
+ 0401  72 06					jb erroDados
+ 0403  3C 39					cmp al, '9'
+ 0405  77 02					ja erroDados
+ 0407  EB 13					jmp calcDados
+						
+ 0409					erroDados:	;Erro, se byte lido não for reconhecido.
+ 0409  8D 1E 0106 R				lea bx, msgErroDados
+ 040D  E8 FCCE					call printf_s
+						.exit 1
+					
+ 0415					ligarFlagDadoAtualNeg:	;Corrige byte lido se for negativo.
+ 0415  C6 06 064F R 01				mov FlagDadoAtualNeg, 1
+ 041A  EB BF					jmp readLinhaD1
+						
+ 041C					calcDados:	;Converte de ASCII para decimal.
+ 041C  2C 30					sub al, '0'
+ 041E  A2 0660 R				mov DadosCalcAux1, al
+ 0421  A1 0661 R				mov ax, DadosCalcAux2
+ 0424  BB 000A					mov bx, 10
+ 0427  F7 E3					mul bx
+ 0429  12 06 0660 R				adc al, DadosCalcAux1
+ 042D  A3 0661 R				mov DadosCalcAux2, ax	;ColCalcAux2 terá o decimal calculado no final.
+ 0430  EB A9					jmp readLinhaD1
+					
+ 0432					salvaDadoNoVetorLinha:	;Salva o decimal no vetorLinha.
+ 0432  80 06 0664 R 01				add countNColunas, 1
+ 0437  80 3E 064F R 01				cmp FlagDadoAtualNeg, 1
+ 043C  74 27					je salvaDadoNegNoVetorLinha
+					
+ 043E  A1 0661 R				mov ax, DadosCalcAux2
+ 0441  8D 36 016D R				lea si, vetorLinha
+ 0445  03 36 0655 R				add si, cursorVetLinha
+ 0449  89 04					mov [si], ax
+ 044B  83 06 0655 R 02				add cursorVetLinha, 2
+ 0450  C6 06 0660 R 00				mov DadosCalcAux1, 0
+ 0455  C7 06 0661 R 0000			mov DadosCalcAux2, 0
+ 045B  80 3E 0649 R 01				cmp flagEOF, 1
+ 0460  74 31					je fimDados
+ 0462  E9 FF76					jmp readLinhaD1
+						
+ 0465					salvaDadoNegNoVetorLinha:	;Se for negativo, dá 'neg' no valor antes de salvar.
+ 0465  A1 0661 R				mov ax, DadosCalcAux2
+ 0468  F7 D8					neg ax
+ 046A  8D 36 016D R				lea si, vetorLinha
+ 046E  03 36 0655 R				add si, cursorVetLinha
+ 0472  89 04					mov [si], ax
+ 0474  83 06 0655 R 02				add cursorVetLinha, 2
+ 0479  C6 06 064F R 00				mov FlagDadoAtualNeg, 0
+ 047E  C6 06 0660 R 00				mov DadosCalcAux1, 0
+ 0483  C7 06 0661 R 0000			mov DadosCalcAux2, 0
+ 0489  80 3E 0649 R 01				cmp flagEOF, 1
+ 048E  74 03					je fimDados
+ 0490  E9 FF48					jmp readLinhaD1
+						
+ 0493					fimDados:
+ 0493  C6 06 0649 R 00				mov flagEOF, 0
+ 0498  C6 06 064A R 01				mov flagEOFDados, 1
+ 049D					retReadLinhaD:
+ 049D  A0 0664 R				mov al, countNColunas
+ 04A0  3A 06 0645 R				cmp al, nColunasDados
+ 04A4  74 0C					je retReadLinhaD2
+ 04A6  8D 1E 0149 R				lea bx, msgErroNColuna
+ 04AA  E8 FC31					call printf_s
+						.exit 1
+						
+ 04B2					retReadLinhaD2:
+ 04B2  C7 06 0655 R 0000			mov cursorVetLinha, 0
+ 04B8  C3					ret
+ 04B9					readLinhaD 	endp
+					
+					
+					
+ 04B9					linha1Res	proc	near	;Escreve os dados da primeira linha do arquivo "RESULT.TXT".
+					
+ 04B9  C7 06 0657 R FFFF			mov cursorExpComAst, -1	;Garante que cursor comece em -1.
+						
+ 04BF					inicioLinha1Res:	;Loop que lê vetorExpComAst e detecta em quais índices tem '*'.
+ 04BF  83 06 0657 R 01				add cursorExpComAst, 1
+ 04C4  83 3E 0657 R 64				cmp cursorExpComAst, 100
+ 04C9  7D 6C					jge retLinha1Res
+ 04CB  8D 36 025D R				lea si, vetorExpComAst
+ 04CF  03 36 0657 R				add si, cursorExpComAst
+ 04D3  8A 04					mov al, [si]
+ 04D5  3C 01					cmp al, 1
+ 04D7  74 02					je achouExpComAst
+ 04D9  EB E4					jmp inicioLinha1Res
+						
+ 04DB					achouExpComAst:	;Se acha '1', converte em ASCII e escreve em 'RESULT.TXT'.
+ 04DB  A1 0657 R				mov ax, cursorExpComAst
+ 04DE  3C 0A					cmp al, 10
+ 04E0  72 02					jb ExpComAstUmaCasa
+ 04E2  EB 12					jmp ExpComAstDuasCasas
+					
+ 04E4					ExpComAstUmaCasa:
+ 04E4  04 30					add al, '0'
+ 04E6  A2 064B R				mov bufferWriteByte1, al
+ 04E9  8B 1E 0021 R				mov bx, HandleOut
+ 04ED  8D 16 064B R				lea dx, bufferWriteByte1
+ 04F1  E8 FBD2					call fwrite
+ 04F4  EB 2F					jmp writePontoVirgula
+						
+ 04F6					ExpComAstDuasCasas:
+ 04F6  B4 00					mov ah, 0
+ 04F8  B3 0A					mov bl, 10
+ 04FA  F6 F3					div bl
+ 04FC  A2 064B R				mov bufferWriteByte1, al
+ 04FF  88 26 064C R				mov bufferWriteByte2, ah
+ 0503  80 06 064B R 30				add bufferWriteByte1, '0'
+ 0508  80 06 064C R 30				add bufferWriteByte2, '0'
+						
+ 050D  8B 1E 0021 R				mov bx, HandleOut
+ 0511  8D 16 064B R				lea dx, bufferWriteByte1
+ 0515  E8 FBAE					call fwrite
+						
+ 0518  8B 1E 0021 R				mov bx, HandleOut
+ 051C  8D 16 064C R				lea dx, bufferWriteByte2
+ 0520  E8 FBA3					call fwrite
+						
+ 0523  EB 00					jmp writePontoVirgula
+						
+						
+ 0525					writePontoVirgula:	;Escreve ';' entre os elementos.
+ 0525  B0 3B					mov al, ';'
+ 0527  A2 064B R				mov bufferWriteByte1, al
+ 052A  8B 1E 0021 R				mov bx, HandleOut
+ 052E  8D 16 064B R				lea dx, bufferWriteByte1
+ 0532  E8 FB91					call fwrite
+ 0535  EB 88					jmp inicioLinha1Res
+						
+						
+ 0537					retLinha1Res:		;Antes de retornar, corrige cursor do arquivo,
+ 0537  B4 42					mov ah, 42h		;apagando último ';' e colocando cursor na segunda linha.
+ 0539  B0 01					mov al, 1
+ 053B  8B 1E 0021 R				mov bx, HandleOut
+ 053F  B9 FFFF					mov cx, -1
+ 0542  BA FFFF					mov dx, -1
+ 0545  CD 21					int 21h
+						
+ 0547  B0 0D					mov al, CR
+ 0549  A2 064B R				mov bufferWriteByte1, al
+ 054C  8B 1E 0021 R				mov bx, HandleOut
+ 0550  8D 16 064B R				lea dx, bufferWriteByte1
+ 0554  E8 FB6F					call fwrite
+						
+ 0557  B0 0A					mov al, LF
+ 0559  A2 064B R				mov bufferWriteByte1, al
+ 055C  8B 1E 0021 R				mov bx, HandleOut
+ 0560  8D 16 064B R				lea dx, bufferWriteByte1
+ 0564  E8 FB5F					call fwrite
+ 0567  C3					ret
+					
+ 0568					linha1Res	endp
+					
+					
+					
+ 0568					quantasExp	proc	near	;Coloca o número de expressões a serem calculadas em "countExpAFazer".
+					
+ 0568  C6 06 0665 R 00			mov countExpAFazer, 0
+ 056D  8D 36 05E1 R			lea si, vetorListaExp
+					
+ 0571					inicioLoopQuantasExp:	;Loop que conta quantas elementos '1' tem no vetor.
+ 0571  8A 04					mov al, [si]		;'1' significa que expressão de 'id' igual ao índice deve ser feita.
+ 0573  83 C6 01					add si, 1
+ 0576  3C FF					cmp al, -1
+ 0578  74 07					je retQuantasExp
+ 057A  80 06 0665 R 01				add countExpAFazer, 1
+ 057F  EB F0					jmp inicioLoopQuantasExp
+						
+ 0581					retQuantasExp:
+ 0581  80 2E 0665 R 01				sub countExpAFazer, 1
+ 0586  C3					ret
+ 0587					quantasExp	endp
+					
+					
+					
+ 0587					calcWriteL	proc	near	;Faz os cálculos e escreve no arquivo resultado.
+						
+ 0587  C6 06 066F R 00				mov countExpFeitas, 0
+ 058C  C6 06 0671 R 00				mov cursorExpAtual, 0
+						
+ 0591					inicioGetExpSendoFeita:		;Pega qual exp será feita.
+ 0591  A0 0665 R				mov al, countExpAFazer
+ 0594  3A 06 066F R				cmp al, countExpFeitas
+ 0598  75 03 E9 023D				je feitasTodasExpLinha
+ 059D  8D 36 05E1 R				lea si, vetorListaExp
+ 05A1  A0 0671 R				mov al, cursorExpAtual
+ 05A4  B4 00					mov ah, 0
+ 05A6  03 F0					add si, ax
+ 05A8  8A 04					mov al, [si]
+ 05AA  A2 0670 R				mov ExpSendoFeita, al
+ 05AD  80 06 0671 R 01				add cursorExpAtual, 1
+ 05B2  EB 00					jmp inicioGetValoresExpSendoFeita
+						
+						
+ 05B4					inicioGetValoresExpSendoFeita:	;ExpSendoFeita é índice.
+ 05B4  8D 36 02C1 R				lea si, vetorOp1		;Pega os valores da expressão nos vetores e armazena em variáveis
+ 05B8  8A 1E 0670 R				mov bl, ExpSendoFeita	;para o cálculo.
+ 05BC  B7 00					mov bh, 0
+ 05BE  D1 E3					shl bx, 1
+ 05C0  03 F3					add si, bx
+ 05C2  8B 04					mov ax, [si]
+ 05C4  A3 0672 R				mov ExpFazendoOp1, ax
+						
+ 05C7  8D 36 0389 R				lea si, vetorOp2
+ 05CB  8A 1E 0670 R				mov bl, ExpSendoFeita
+ 05CF  B7 00					mov bh, 0
+ 05D1  D1 E3					shl bx, 1
+ 05D3  03 F3					add si, bx
+ 05D5  8B 04					mov ax, [si]
+ 05D7  A3 0675 R				mov ExpFazendoOp2, ax
+						
+ 05DA  8D 36 0451 R				lea si, vetorTipoOp1
+ 05DE  8A 1E 0670 R				mov bl, ExpSendoFeita
+ 05E2  B7 00					mov bh, 0
+ 05E4  03 F3					add si, bx
+ 05E6  8A 04					mov al, [si]
+ 05E8  A2 0674 R				mov ExpFazendoOp1Ti, al
+						
+ 05EB  8D 36 04B5 R				lea si, vetorTipoOp2
+ 05EF  8A 1E 0670 R				mov bl, ExpSendoFeita
+ 05F3  B7 00					mov bh, 0
+ 05F5  03 F3					add si, bx
+ 05F7  8A 04					mov al, [si]
+ 05F9  A2 0677 R				mov ExpFazendoOp2Ti, al
+						
+ 05FC  8D 36 0519 R				lea si, vetorOperacao
+ 0600  8A 1E 0670 R				mov bl, ExpSendoFeita
+ 0604  B7 00					mov bh, 0
+ 0606  03 F3					add si, bx
+ 0608  8A 04					mov al, [si]
+ 060A  A2 0678 R				mov ExpFazendoOper, al
+						
+						
+ 060D  8D 36 025D R				lea si, vetorExpComAst
+ 0611  8A 1E 0670 R				mov bl, ExpSendoFeita
+ 0615  B7 00					mov bh, 0
+ 0617  03 F3					add si, bx
+ 0619  8A 04					mov al, [si]
+ 061B  3C 01					cmp al, 1
+ 061D  75 05					jne inicioConverteOpsTipo
+ 061F  C6 06 0679 R 01				mov FlagWriteExpFazendo, 1
+						
+						
+						
+ 0624					inicioConverteOpsTipo:	;'ExpFazendoOp1' e '2' serão convertidos de acordo com seu tipo.
+ 0624  80 3E 0674 R 00				cmp ExpFazendoOp1Ti, 0
+ 0629  74 40					je fimConverteOp1
+ 062B  80 3E 0674 R 01				cmp ExpFazendoOp1Ti, 1
+ 0630  74 13					je converteOp1Coluna
+ 0632  80 3E 0674 R 02				cmp ExpFazendoOp1Ti, 2
+ 0637  74 1F					je converteOp1Resultado
+ 0639  8D 1E 0128 R				lea bx, msgErroCalculo
+ 063D  E8 FA9E					call printf_s
+						.exit 1
+						
+ 0645					converteOp1Coluna:	;Se tipo do op1 for coluna, converte em valor da coluna de dados.
+ 0645  8D 36 016D R				lea si, vetorLinha
+ 0649  8B 1E 0672 R				mov bx, ExpFazendoOp1
+ 064D  D1 E3					shl bx, 1
+ 064F  03 F3					add si, bx
+ 0651  8B 04					mov ax, [si]
+ 0653  A3 0672 R				mov ExpFazendoOp1, ax
+ 0656  EB 13					jmp fimConverteOp1
+						
+ 0658					converteOp1Resultado:	;Se tipo do op1 for resultado, converte em valor do vetor de resultados.
+ 0658  8D 36 0195 R				lea si, vetorResultados
+ 065C  8B 1E 0672 R				mov bx, ExpFazendoOp1
+ 0660  D1 E3					shl bx, 1
+ 0662  03 F3					add si, bx
+ 0664  8B 04					mov ax, [si]
+ 0666  A3 0672 R				mov ExpFazendoOp1, ax
+ 0669  EB 00					jmp fimConverteOp1
+						
+ 066B					fimConverteOp1:	
+						
+ 066B					inicioConverteOp2:	;Converte igualmente op2.
+ 066B  80 3E 0677 R 00				cmp ExpFazendoOp2Ti, 0
+ 0670  74 40					je fimConverteOp2
+ 0672  80 3E 0677 R 01				cmp ExpFazendoOp2Ti, 1
+ 0677  74 13					je converteOp2Coluna
+ 0679  80 3E 0677 R 02				cmp ExpFazendoOp2Ti, 2
+ 067E  74 1F					je converteOp2Resultado
+ 0680  8D 1E 0128 R				lea bx, msgErroCalculo
+ 0684  E8 FA57					call printf_s
+						.exit 1
+						
+ 068C					converteOp2Coluna:
+ 068C  8D 36 016D R				lea si, vetorLinha
+ 0690  8B 1E 0675 R				mov bx, ExpFazendoOp2
+ 0694  D1 E3					shl bx, 1
+ 0696  03 F3					add si, bx
+ 0698  8B 04					mov ax, [si]
+ 069A  A3 0675 R				mov ExpFazendoOp2, ax
+ 069D  EB 13					jmp fimConverteOp2
+						
+ 069F					converteOp2Resultado:
+ 069F  8D 36 0195 R				lea si, vetorResultados
+ 06A3  8B 1E 0675 R				mov bx, ExpFazendoOp2
+ 06A7  D1 E3					shl bx, 1
+ 06A9  03 F3					add si, bx
+ 06AB  8B 04					mov ax, [si]
+ 06AD  A3 0675 R				mov ExpFazendoOp2, ax
+ 06B0  EB 00					jmp fimConverteOp2
+						
+						
+ 06B2					fimConverteOp2:
+					
+ 06B2					inicioCompOperacaoExpFazendo:	;Testa qual operação será feita.
+ 06B2  8D 36 0519 R				lea si, vetorOperacao
+ 06B6  8A 1E 0670 R				mov bl, ExpSendoFeita
+ 06BA  B7 00					mov bh, 0
+ 06BC  03 F3					add si, bx
+ 06BE  8A 04					mov al, [si]
+ 06C0  3C 01					cmp al, 1
+ 06C2  74 34					je operacaoSendoFeitaADD
+ 06C4  3C 02					cmp al, 2
+ 06C6  74 48					je operacaoSendoFeitaSUB
+ 06C8  3C 03					cmp al, 3
+ 06CA  74 5C					je operacaoSendoFeitaMULT
+ 06CC  3C 04					cmp al, 4
+ 06CE  74 71					je operacaoSendoFeitaDIV
+ 06D0  3C 05					cmp al, 5
+ 06D2  75 03 E9 0084				je operacaoSendoFeitaRESTO
+ 06D7  3C 06					cmp al, 6
+ 06D9  75 03 E9 0097				je operacaoSendoFeitaAND
+ 06DE  3C 07					cmp al, 7
+ 06E0  75 03 E9 00A9				je operacaoSendoFeitaOR
+ 06E5  3C 08					cmp al, 8
+ 06E7  75 03 E9 00BB				je operacaoSendoFeitaXOR
+ 06EC  8D 1E 0128 R				lea bx, msgErroCalculo
+ 06F0  E8 F9EB					call printf_s
+						.exit 1
+						
+						
+ 06F8					inicioOperacaoExpFazendo:	;Faz operação, com operadores corrigidos ao tipo de operador e
+												;salva resultado em 'vetorResultados'.
+						
+ 06F8					operacaoSendoFeitaADD:
+ 06F8  A1 0672 R				mov ax, ExpFazendoOp1
+ 06FB  03 06 0675 R				add ax, ExpFazendoOp2
+ 06FF  8D 36 0195 R				lea si, vetorResultados
+ 0703  8A 1E 0670 R				mov bl, ExpSendoFeita
+ 0707  D1 E3					shl bx, 1
+ 0709  03 F3					add si, bx
+ 070B  89 04					mov [si], ax
+ 070D  E9 00B0					jmp fimOperacaoExpFazendo
+						
+					
+ 0710					operacaoSendoFeitaSUB:
+ 0710  A1 0672 R				mov ax, ExpFazendoOp1
+ 0713  2B 06 0675 R				sub ax, ExpFazendoOp2
+ 0717  8D 36 0195 R				lea si, vetorResultados
+ 071B  8A 1E 0670 R				mov bl, ExpSendoFeita
+ 071F  D1 E3					shl bx, 1
+ 0721  03 F3					add si, bx
+ 0723  89 04					mov [si], ax
+ 0725  E9 0098					jmp fimOperacaoExpFazendo
+					
+ 0728					operacaoSendoFeitaMULT:
+ 0728  A1 0672 R				mov ax, ExpFazendoOp1
+ 072B  8B 1E 0675 R				mov bx, ExpFazendoOp2
+ 072F  F7 EB					imul bx
+ 0731  8D 36 0195 R				lea si, vetorResultados
+ 0735  8A 1E 0670 R				mov bl, ExpSendoFeita
+ 0739  D1 E3					shl bx, 1
+ 073B  03 F3					add si, bx
+ 073D  89 04					mov [si], ax
+ 073F  EB 7F					jmp fimOperacaoExpFazendo
+						
+					
+ 0741					operacaoSendoFeitaDIV:
+ 0741  A1 0672 R				mov ax, ExpFazendoOp1
+ 0744  99					cwd
+ 0745  8B 1E 0675 R				mov bx, ExpFazendoOp2
+ 0749  F7 FB					idiv bx
+ 074B  8D 36 0195 R				lea si, vetorResultados
+ 074F  8A 1E 0670 R				mov bl, ExpSendoFeita
+ 0753  D1 E3					shl bx, 1
+ 0755  03 F3					add si, bx
+ 0757  89 04					mov [si], ax
+ 0759  EB 65					jmp fimOperacaoExpFazendo
+					
+ 075B					operacaoSendoFeitaRESTO:
+ 075B  A1 0672 R				mov ax, ExpFazendoOp1
+ 075E  99					cwd
+ 075F  8B 1E 0675 R				mov bx, ExpFazendoOp2
+ 0763  F7 FB					idiv bx
+ 0765  8D 36 0195 R				lea si, vetorResultados
+ 0769  8A 1E 0670 R				mov bl, ExpSendoFeita
+ 076D  D1 E3					shl bx, 1
+ 076F  03 F3					add si, bx
+ 0771  89 14					mov [si], dx
+ 0773  EB 4B					jmp fimOperacaoExpFazendo
+					
+ 0775					operacaoSendoFeitaAND:
+ 0775  A1 0672 R				mov ax, ExpFazendoOp1
+ 0778  8B 1E 0675 R				mov bx, ExpFazendoOp2
+ 077C  23 C3					and ax, bx
+ 077E  8D 36 0195 R				lea si, vetorResultados
+ 0782  8A 1E 0670 R				mov bl, ExpSendoFeita
+ 0786  D1 E3					shl bx, 1
+ 0788  03 F3					add si, bx
+ 078A  89 04					mov [si], ax
+ 078C  EB 32					jmp fimOperacaoExpFazendo
+					
+ 078E					operacaoSendoFeitaOR:
+ 078E  A1 0672 R				mov ax, ExpFazendoOp1
+ 0791  8B 1E 0675 R				mov bx, ExpFazendoOp2
+ 0795  0B C3					or ax, bx
+ 0797  8D 36 0195 R				lea si, vetorResultados
+ 079B  8A 1E 0670 R				mov bl, ExpSendoFeita
+ 079F  D1 E3					shl bx, 1
+ 07A1  03 F3					add si, bx
+ 07A3  89 04					mov [si], ax
+ 07A5  EB 19					jmp fimOperacaoExpFazendo
+					
+ 07A7					operacaoSendoFeitaXOR:
+ 07A7  A1 0672 R				mov ax, ExpFazendoOp1
+ 07AA  8B 1E 0675 R				mov bx, ExpFazendoOp2
+ 07AE  33 C3					xor ax, bx
+ 07B0  8D 36 0195 R				lea si, vetorResultados
+ 07B4  8A 1E 0670 R				mov bl, ExpSendoFeita
+ 07B8  D1 E3					shl bx, 1
+ 07BA  03 F3					add si, bx
+ 07BC  89 04					mov [si], ax
+ 07BE  EB 00					jmp fimOperacaoExpFazendo
+						
+ 07C0					fimOperacaoExpFazendo:	;Testa se expressão atual deve ser escrita.
+ 07C0  80 06 066F R 01				add countExpFeitas, 1
+ 07C5  80 3E 0679 R 01				cmp FlagWriteExpFazendo, 1	;Se sim, pula para escrita, se não, passa para próxima exp.
+ 07CA  74 03 E9 FDC2				jne inicioGetExpSendoFeita
+						
+ 07CF					inicioWriteResultadoExpComAst:
+ 07CF  E8 0039					call writeResultadoEmResult
+ 07D2  C6 06 0679 R 00				mov FlagWriteExpFazendo, 0
+ 07D7  E9 FDB7					jmp inicioGetExpSendoFeita
+						
+ 07DA					feitasTodasExpLinha:	;Final das expressões na linha atual.
+ 07DA  B4 42					mov ah, 42h			;Apaga último ';' e escreve CR e LF para pular para próxima linha.
+ 07DC  B0 01					mov al, 1
+ 07DE  8B 1E 0021 R				mov bx, HandleOut
+ 07E2  B9 FFFF					mov cx, -1
+ 07E5  BA FFFF					mov dx, -1
+ 07E8  CD 21					int 21h
+					
+ 07EA  B0 0D					mov al, CR
+ 07EC  A2 064B R				mov bufferWriteByte1, al
+ 07EF  8B 1E 0021 R				mov bx, HandleOut
+ 07F3  8D 16 064B R				lea dx, bufferWriteByte1
+ 07F7  E8 F8CC					call fwrite
+					
+ 07FA  B0 0A					mov al, LF
+ 07FC  A2 064B R				mov bufferWriteByte1, al
+ 07FF  8B 1E 0021 R				mov bx, HandleOut
+ 0803  8D 16 064B R				lea dx, bufferWriteByte1
+ 0807  E8 F8BC					call fwrite
+						
+ 080A					retCalcWriteL:
+ 080A  C3					ret
+ 080B					calcWriteL	endp
+					
+					
+					
+ 080B					writeResultadoEmResult	proc	near	;Função chamada quando exp tem '*'.
+ 080B  8D 36 0195 R				lea si, vetorResultados
+ 080F  8A 1E 0670 R				mov bl, ExpSendoFeita
+ 0813  D1 E3					shl bx, 1
+ 0815  03 F3					add si, bx
+ 0817  8B 04					mov ax, [si]
+ 0819  A3 0666 R				mov valorASerEscrito, ax	;Coloca em 'valorASerEscrito' o resultado de exp com '*'.
+ 081C  83 3E 0666 R 00				cmp valorASerEscrito, 0
+ 0821  7C 02					jl writeResultadoFlagNeg	;Testa se resultado é negativo e ativa flag.
+ 0823  EB 07					jmp writeResultadoDecToAscii
+						
+ 0825					writeResultadoFlagNeg:
+ 0825  C6 06 0668 R 01				mov flagWriteResultadoNeg, 1
+ 082A  EB 00					jmp writeResultadoDecToAscii
+						
+ 082C					writeResultadoDecToAscii:	;Se valor é negativo, escreve '-' antes de valor, e dá 'neg' no mesmo.
+ 082C  80 3E 0668 R 01				cmp flagWriteResultadoNeg, 1
+ 0831  75 20					jne writeResultadoDecToAscii2
+ 0833  A1 0666 R				mov ax, valorASerEscrito
+ 0836  F7 D8					neg ax
+ 0838  A3 0666 R				mov valorASerEscrito, ax
+ 083B  B8 0000					mov ax, 0
+ 083E  B0 2D					mov al, '-'
+ 0840  A2 064B R				mov bufferWriteByte1, al
+ 0843  8B 1E 0021 R				mov bx, HandleOut
+ 0847  8D 16 064B R				lea dx, bufferWriteByte1
+ 084B  E8 F878					call fwrite
+ 084E  C6 06 0668 R 00				mov flagWriteResultadoNeg, 0
+						
+ 0853					writeResultadoDecToAscii2:	;Chama função de conversão de decimal para ASCII para escrita.
+ 0853  A1 0666 R				mov ax, valorASerEscrito
+ 0856  8B 1E 0021 R				mov bx, HandleOut
+ 085A  E8 0011					call convEscreveNumero
+						
+ 085D  B0 3B					mov al, ';'	;Escreve ';' entre os elementos.
+ 085F  A2 064B R				mov bufferWriteByte1, al
+ 0862  8B 1E 0021 R				mov bx, HandleOut
+ 0866  8D 16 064B R				lea dx, bufferWriteByte1
+ 086A  E8 F859					call fwrite
+					
+					
+ 086D					retWriteResultadoEmResult:
+ 086D  C3					ret
+ 086E					writeResultadoEmResult	endp
+					
+					
+					
+ 086E					convEscreveNumero proc near	;Converte decimal em ASCII para escrita em "RESULT.TXT".
+ 086E  83 F8 00			    cmp ax, 0	;Testa se valorASerEscrito = 0, se sim, escreve '0' direto.
+ 0871  75 0D			    jne loopConversao
+ 0873  B0 30			    mov al, '0'
+ 0875  A2 064B R		    mov bufferWriteByte1, al
+ 0878  8D 16 064B R		    lea dx, bufferWriteByte1
+ 087C  E8 F847			    call fwrite
+ 087F  C3			    ret
+
+ 0880				loopConversao:
+ 0880  50			    push ax	;Senão, salva ax na pilha
+ 0881  BE 066E R		    mov si, offset asciiBuffer + 5
+
+ 0884				converteDigito:
+ 0884  BA 0000			    mov dx, 0       ;Converte cada dígito em ASCII e armazena em asciiBuffer para escrita.
+ 0887  B9 000A			    mov cx, 10
+ 088A  F7 F1			    div cx  
+ 088C  80 C2 30			    add dl, '0' 
+ 088F  4E			    dec si
+ 0890  88 14			    mov [si], dl
+ 0892  83 F8 00			    cmp ax, 0	;Quando ax = 0, fim da conversão.
+ 0895  75 ED			    jne converteDigito
+
+ 0897				escreveDigitos:	;Escreve cada byte de asciiBuffer.
+ 0897  81 FE 066E R		    cmp si, offset asciiBuffer + 5	;Testa se chegou no fim do buffer.
+ 089B  74 0F			    je fimConvEscreve	;Se sim, pula para final, senão, escreve byte em RESULT.TXT.
+ 089D  8A 04			    mov al, [si]
+ 089F  A2 064B R		    mov bufferWriteByte1, al
+ 08A2  8D 16 064B R		    lea dx, bufferWriteByte1
+ 08A6  E8 F81D			    call fwrite
+ 08A9  46			    inc si
+ 08AA  EB EB			    jmp escreveDigitos
+
+ 08AC				fimConvEscreve:
+ 08AC  58			    pop ax
+ 08AD  C3			    ret
+
+ 08AE				convEscreveNumero endp
+					
+					
+					
+					end
+Microsoft (R) Macro Assembler Version 6.11		    07/10/25 19:58:44
+intel2.asm						     Symbols 2 - 1
+
+
+
+
+Segments and Groups:
+
+                N a m e                 Size     Length   Align   Combine Class
+
+DGROUP . . . . . . . . . . . . .	GROUP
+_DATA  . . . . . . . . . . . . .	16 Bit	 067A	  Word	  Public  'DATA'	
+STACK  . . . . . . . . . . . . .	16 Bit	 0400	  Para	  Stack	  'STACK'	 
+_TEXT  . . . . . . . . . . . . .	16 Bit	 08AE	  Word	  Public  'CODE'	
+
+
+Procedures,  parameters and locals:
+
+                N a m e                 Type     Value    Attr
+
+calcWriteL . . . . . . . . . . .	P Near	 0587	  _TEXT	Length= 028D Private
+convEscreveNumero  . . . . . . .	P Near	 086E	  _TEXT	Length= 0040 Private
+fclose . . . . . . . . . . . . .	P Near	 0099	  _TEXT	Length= 0005 Private
+fcreate  . . . . . . . . . . . .	P Near	 0068	  _TEXT	Length= 0019 Private
+fopen  . . . . . . . . . . . . .	P Near	 0081	  _TEXT	Length= 0018 Private
+fread  . . . . . . . . . . . . .	P Near	 009E	  _TEXT	Length= 0028 Private
+fwrite . . . . . . . . . . . . .	P Near	 00C6	  _TEXT	Length= 0018 Private
+linha1Res  . . . . . . . . . . .	P Near	 04B9	  _TEXT	Length= 00AF Private
+printf_s . . . . . . . . . . . .	P Near	 00DE	  _TEXT	Length= 0011 Private
+quantasExp . . . . . . . . . . .	P Near	 0568	  _TEXT	Length= 001F Private
+readColuna . . . . . . . . . . .	P Near	 0371	  _TEXT	Length= 005F Private
+readExp  . . . . . . . . . . . .	P Near	 00EF	  _TEXT	Length= 0315 Private
+readLinhaD . . . . . . . . . . .	P Near	 03D0	  _TEXT	Length= 00E9 Private
+writeResultadoEmResult . . . . .	P Near	 080B	  _TEXT	Length= 0063 Private
+
+
+Symbols:
+
+                N a m e                 Type     Value    Attr
+
+@CodeSize  . . . . . . . . . . .	Number	 0000h	 
+@DataSize  . . . . . . . . . . .	Number	 0000h	 
+@Interface . . . . . . . . . . .	Number	 0000h	 
+@Model . . . . . . . . . . . . .	Number	 0002h	 
+@Startup . . . . . . . . . . . .	L Near	 0000	  _TEXT	
+@code  . . . . . . . . . . . . .	Text   	 _TEXT
+@data  . . . . . . . . . . . . .	Text   	 DGROUP
+@fardata?  . . . . . . . . . . .	Text   	 FAR_BSS
+@fardata . . . . . . . . . . . .	Text   	 FAR_DATA
+@stack . . . . . . . . . . . . .	Text   	 DGROUP
+CR . . . . . . . . . . . . . . .	Number	 000Dh	 
+ColCalcAux1  . . . . . . . . . .	Byte	 065D	  _DATA	
+ColCalcAux2  . . . . . . . . . .	Word	 065E	  _DATA	
+DadosCalcAux1  . . . . . . . . .	Byte	 0660	  _DATA	
+DadosCalcAux2  . . . . . . . . .	Word	 0661	  _DATA	
+ExpCalcAux1  . . . . . . . . . .	Byte	 065A	  _DATA	
+ExpCalcAux2  . . . . . . . . . .	Word	 065B	  _DATA	
+ExpComAstDuasCasas . . . . . . .	L Near	 04F6	  _TEXT	
+ExpComAstUmaCasa . . . . . . . .	L Near	 04E4	  _TEXT	
+ExpFazendoOp1Ti  . . . . . . . .	Byte	 0674	  _DATA	
+ExpFazendoOp1  . . . . . . . . .	Word	 0672	  _DATA	
+ExpFazendoOp2Ti  . . . . . . . .	Byte	 0677	  _DATA	
+ExpFazendoOp2  . . . . . . . . .	Word	 0675	  _DATA	
+ExpFazendoOper . . . . . . . . .	Byte	 0678	  _DATA	
+ExpSendoFeita  . . . . . . . . .	Byte	 0670	  _DATA	
+FileBuffer . . . . . . . . . . .	Byte	 0648	  _DATA	
+FileHandle . . . . . . . . . . .	Word	 0646	  _DATA	
+FlagDadoAtualNeg . . . . . . . .	Byte	 064F	  _DATA	
+FlagWriteExpFazendo  . . . . . .	Byte	 0679	  _DATA	
+HandleDados  . . . . . . . . . .	Word	 000A	  _DATA	
+HandleExp  . . . . . . . . . . .	Word	 0014	  _DATA	
+HandleOut  . . . . . . . . . . .	Word	 0021	  _DATA	
+IdExpAtual . . . . . . . . . . .	Word	 0650	  _DATA	
+LF . . . . . . . . . . . . . . .	Number	 000Ah	 
+MsgErroCreate  . . . . . . . . .	Byte	 004E	  _DATA	
+MsgErroOpen  . . . . . . . . . .	Byte	 006E	  _DATA	
+MsgErroRead  . . . . . . . . . .	Byte	 008D	  _DATA	
+MsgErroWrite . . . . . . . . . .	Byte	 00AB	  _DATA	
+MsgSucesso . . . . . . . . . . .	Byte	 0023	  _DATA	
+NameDados  . . . . . . . . . . .	Byte	 0000	  _DATA	
+NameExp  . . . . . . . . . . . .	Byte	 000C	  _DATA	
+NameOut  . . . . . . . . . . . .	Byte	 0016	  _DATA	
+OperExpAtual . . . . . . . . . .	Byte	 0652	  _DATA	
+ReadExpPosIgualFlagColunaOp1 . .	L Near	 020B	  _TEXT	
+ReadExpPosIgualFlagColunaOp2 . .	L Near	 021A	  _TEXT	
+ReadExpPosIgualFlagColuna  . . .	L Near	 0202	  _TEXT	
+ReadExpPosIgualFlagResultadoOp1 	L Near	 0232	  _TEXT	
+ReadExpPosIgualFlagResultadoOp2 	L Near	 0241	  _TEXT	
+ReadExpPosIgualFlagResultado . .	L Near	 0229	  _TEXT	
+ReadExpPosIgualOperadorAND . . .	L Near	 0296	  _TEXT	
+ReadExpPosIgualOperadorAdd . . .	L Near	 0250	  _TEXT	
+ReadExpPosIgualOperadorDiv . . .	L Near	 027A	  _TEXT	
+ReadExpPosIgualOperadorMult  . .	L Near	 026C	  _TEXT	
+ReadExpPosIgualOperadorOR  . . .	L Near	 02A4	  _TEXT	
+ReadExpPosIgualOperadorResto . .	L Near	 0288	  _TEXT	
+ReadExpPosIgualOperadorSub . . .	L Near	 025E	  _TEXT	
+ReadExpPosIgualOperadorXOR . . .	L Near	 02B2	  _TEXT	
+achouExpComAst . . . . . . . . .	L Near	 04DB	  _TEXT	
+asciiBuffer  . . . . . . . . . .	Byte	 0669	  _DATA	
+bufferTipoOp . . . . . . . . . .	Byte	 0659	  _DATA	
+bufferWriteByte1 . . . . . . . .	Byte	 064B	  _DATA	
+bufferWriteByte2 . . . . . . . .	Byte	 064C	  _DATA	
+calcDados  . . . . . . . . . . .	L Near	 041C	  _TEXT	
+callReadLinhaD . . . . . . . . .	L Near	 004A	  _TEXT	
+compLinhaDados1  . . . . . . . .	L Near	 03EC	  _TEXT	
+converteDigito . . . . . . . . .	L Near	 0884	  _TEXT	
+converteOp1Coluna  . . . . . . .	L Near	 0645	  _TEXT	
+converteOp1Resultado . . . . . .	L Near	 0658	  _TEXT	
+converteOp2Coluna  . . . . . . .	L Near	 068C	  _TEXT	
+converteOp2Resultado . . . . . .	L Near	 069F	  _TEXT	
+countExpAFazer . . . . . . . . .	Byte	 0665	  _DATA	
+countExpFeitas . . . . . . . . .	Byte	 066F	  _DATA	
+countNColunas  . . . . . . . . .	Byte	 0664	  _DATA	
+cursorExpAtual . . . . . . . . .	Byte	 0671	  _DATA	
+cursorExpComAst  . . . . . . . .	Word	 0657	  _DATA	
+cursorLista  . . . . . . . . . .	Word	 0653	  _DATA	
+cursorVetLinha . . . . . . . . .	Word	 0655	  _DATA	
+erroDados  . . . . . . . . . . .	L Near	 0409	  _TEXT	
+erroReadColuna . . . . . . . . .	L Near	 03C3	  _TEXT	
+erroReadExp  . . . . . . . . . .	L Near	 011D	  _TEXT	
+escreveDigitos . . . . . . . . .	L Near	 0897	  _TEXT	
+feitasTodasExpLinha  . . . . . .	L Near	 07DA	  _TEXT	
+fimConvEscreve . . . . . . . . .	L Near	 08AC	  _TEXT	
+fimConverteOp1 . . . . . . . . .	L Near	 066B	  _TEXT	
+fimConverteOp2 . . . . . . . . .	L Near	 06B2	  _TEXT	
+fimDados . . . . . . . . . . . .	L Near	 0493	  _TEXT	
+fimFileExp1  . . . . . . . . . .	L Near	 036B	  _TEXT	
+fimFileExp . . . . . . . . . . .	L Near	 0369	  _TEXT	
+fimLinhaExp  . . . . . . . . . .	L Near	 035B	  _TEXT	
+fimOperacaoExpFazendo  . . . . .	L Near	 07C0	  _TEXT	
+flagEOFDados . . . . . . . . . .	Byte	 064A	  _DATA	
+flagEOF  . . . . . . . . . . . .	Byte	 0649	  _DATA	
+flagExpLendoOp . . . . . . . . .	Byte	 064E	  _DATA	
+flagExpTemAst  . . . . . . . . .	Byte	 064D	  _DATA	
+flagWriteResultadoNeg  . . . . .	Byte	 0668	  _DATA	
+fread1 . . . . . . . . . . . . .	L Near	 00B8	  _TEXT	
+freadEOF . . . . . . . . . . . .	L Near	 00BF	  _TEXT	
+inicioCompOperacaoExpFazendo . .	L Near	 06B2	  _TEXT	
+inicioConverteOp2  . . . . . . .	L Near	 066B	  _TEXT	
+inicioConverteOpsTipo  . . . . .	L Near	 0624	  _TEXT	
+inicioGetExpSendoFeita . . . . .	L Near	 0591	  _TEXT	
+inicioGetValoresExpSendoFeita  .	L Near	 05B4	  _TEXT	
+inicioLinha1Res  . . . . . . . .	L Near	 04BF	  _TEXT	
+inicioLinhaReadExp . . . . . . .	L Near	 00EF	  _TEXT	
+inicioLoopQuantasExp . . . . . .	L Near	 0571	  _TEXT	
+inicioOperacaoExpFazendo . . . .	L Near	 06F8	  _TEXT	
+inicioReadExpPosIgual  . . . . .	L Near	 0184	  _TEXT	
+inicioWriteResultadoExpComAst  .	L Near	 07CF	  _TEXT	
+ligarFlagDadoAtualNeg  . . . . .	L Near	 0415	  _TEXT	
+linha1ResAux1  . . . . . . . . .	Byte	 0663	  _DATA	
+linhaExpCalcId . . . . . . . . .	L Near	 0130	  _TEXT	
+linhaExpCalcOp . . . . . . . . .	L Near	 02C0	  _TEXT	
+linhaExpTemAst . . . . . . . . .	L Near	 0129	  _TEXT	
+linhaReadExpComp1  . . . . . . .	L Near	 0103	  _TEXT	
+linhaReadExpPosIgualComp1  . . .	L Near	 0198	  _TEXT	
+linhaReadExpPosIgual . . . . . .	L Near	 0147	  _TEXT	
+loopConversao  . . . . . . . . .	L Near	 0880	  _TEXT	
+msgErroCalculo . . . . . . . . .	Byte	 0128	  _DATA	
+msgErroColuna  . . . . . . . . .	Byte	 00E9	  _DATA	
+msgErroDados . . . . . . . . . .	Byte	 0106	  _DATA	
+msgErroNColuna . . . . . . . . .	Byte	 0149	  _DATA	
+msgErroReadExp . . . . . . . . .	Byte	 00C9	  _DATA	
+nColunasDados  . . . . . . . . .	Byte	 0645	  _DATA	
+operacaoSendoFeitaADD  . . . . .	L Near	 06F8	  _TEXT	
+operacaoSendoFeitaAND  . . . . .	L Near	 0775	  _TEXT	
+operacaoSendoFeitaDIV  . . . . .	L Near	 0741	  _TEXT	
+operacaoSendoFeitaMULT . . . . .	L Near	 0728	  _TEXT	
+operacaoSendoFeitaOR . . . . . .	L Near	 078E	  _TEXT	
+operacaoSendoFeitaRESTO  . . . .	L Near	 075B	  _TEXT	
+operacaoSendoFeitaSUB  . . . . .	L Near	 0710	  _TEXT	
+operacaoSendoFeitaXOR  . . . . .	L Near	 07A7	  _TEXT	
+ps_1 . . . . . . . . . . . . . .	L Near	 00EE	  _TEXT	
+readColuna1  . . . . . . . . . .	L Near	 0371	  _TEXT	
+readLinhaD1  . . . . . . . . . .	L Near	 03DB	  _TEXT	
+retCalcWriteL  . . . . . . . . .	L Near	 080A	  _TEXT	
+retLinha1Res . . . . . . . . . .	L Near	 0537	  _TEXT	
+retQuantasExp  . . . . . . . . .	L Near	 0581	  _TEXT	
+retReadColuna  . . . . . . . . .	L Near	 03CF	  _TEXT	
+retReadLinhaD2 . . . . . . . . .	L Near	 04B2	  _TEXT	
+retReadLinhaD  . . . . . . . . .	L Near	 049D	  _TEXT	
+retWriteResultadoEmResult  . . .	L Near	 086D	  _TEXT	
+retfcreate . . . . . . . . . . .	L Near	 007D	  _TEXT	
+retfopen . . . . . . . . . . . .	L Near	 0095	  _TEXT	
+retfwrite  . . . . . . . . . . .	L Near	 00DC	  _TEXT	
+salvaColuna  . . . . . . . . . .	L Near	 039D	  _TEXT	
+salvaDadoNegNoVetorLinha . . . .	L Near	 0465	  _TEXT	
+salvaDadoNoVetorLinha  . . . . .	L Near	 0432	  _TEXT	
+salvaOp1NoVetor2 . . . . . . . .	L Near	 0307	  _TEXT	
+salvaOp1NoVetor  . . . . . . . .	L Near	 02E0	  _TEXT	
+salvaOp2NoVetor2 . . . . . . . .	L Near	 0341	  _TEXT	
+salvaOp2NoVetor  . . . . . . . .	L Near	 031A	  _TEXT	
+salvaOpNoVetor . . . . . . . . .	L Near	 02D7	  _TEXT	
+ultimaLinha  . . . . . . . . . .	L Near	 0059	  _TEXT	
+valorASerEscrito . . . . . . . .	Word	 0666	  _DATA	
+vetorExpComAst . . . . . . . . .	Byte	 025D	  _DATA	
+vetorIdExpFazer  . . . . . . . .	Byte	 057D	  _DATA	
+vetorLinha . . . . . . . . . . .	Word	 016D	  _DATA	
+vetorListaExp  . . . . . . . . .	Byte	 05E1	  _DATA	
+vetorOp1 . . . . . . . . . . . .	Word	 02C1	  _DATA	
+vetorOp2 . . . . . . . . . . . .	Word	 0389	  _DATA	
+vetorOperacao  . . . . . . . . .	Byte	 0519	  _DATA	
+vetorResultados  . . . . . . . .	Word	 0195	  _DATA	
+vetorTipoOp1 . . . . . . . . . .	Byte	 0451	  _DATA	
+vetorTipoOp2 . . . . . . . . . .	Byte	 04B5	  _DATA	
+writePontoVirgula  . . . . . . .	L Near	 0525	  _TEXT	
+writeResultadoDecToAscii2  . . .	L Near	 0853	  _TEXT	
+writeResultadoDecToAscii . . . .	L Near	 082C	  _TEXT	
+writeResultadoFlagNeg  . . . . .	L Near	 0825	  _TEXT	
+
+	   0 Warnings
+	   0 Errors
